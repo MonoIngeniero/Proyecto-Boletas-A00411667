@@ -220,6 +220,10 @@ public class BookingServiceImpl implements BookingService {
         if (seatIds == null || seatIds.length == 0) {
             throw new InvalidBookingException("Debe seleccionar al menos una silla para completar la reserva.");
         }
+        //el id el usuario nunca lo escribe (esto es lo q genera el cliente y lo manda en cada llamada)
+        if (clientId == null || clientId.trim().isEmpty()) {
+        throw new InvalidBookingException("El identificador de cliente es obligatorio.");
+        }
         if (customerName == null || customerName.trim().isEmpty()) {
             throw new InvalidBookingException("El nombre del comprador es obligatorio.");
         }
@@ -227,64 +231,70 @@ public class BookingServiceImpl implements BookingService {
             throw new InvalidBookingException("El correo electrónico del comprador es inválido.");
         }
 
-        double totalAmount = 0.0;
-        List<Seat> validatedSeats = new ArrayList<>();
+        // quitar duplicados conservando el orden
+        String[] uniqueIds = new LinkedHashSet<>(Arrays.asList(seatIds)).toArray(new String[0]);
 
-        // Paso 1: Validación preliminar de las sillas
-        for (String seatId : seatIds) {
-            Seat seat = seatsMap.get(seatId);
-            if (seat == null) {
-                throw new SeatNotFoundException("Silla no existe: " + seatId);
-            }
-            if (seat.state == SeatState.BOOKED) {
-                throw new BookingException("La silla " + seatId + " ya fue vendida definitivamente.");
-            }
-            if (seat.state == SeatState.LOCKED) {
-                if (isLockExpired(seat)) {
-                    throw new LockExpiredException("El bloqueo temporal de la silla " + seatId + " ha expirado.");
+        lock.lock();
+        try{
+            double totalAmount = 0.0;
+            List<Seat> validatedSeats = new ArrayList<>();
+
+            // Paso 1: Validación preliminar de las sillas
+            for (String seatId : seatIds) {
+                Seat seat = seatsMap.get(seatId);
+                if (seat == null) {
+                    throw new SeatNotFoundException("Silla no existe: " + seatId);
                 }
-                if (!clientId.equals(seat.lockedByClientId)) {
-                    throw new BookingException("La silla " + seatId + " se encuentra bloqueada por otro comprador.");
+                if (seat.state == SeatState.BOOKED) {
+                    throw new BookingException("La silla " + seatId + " ya fue vendida definitivamente.");
                 }
+                if (seat.state == SeatState.LOCKED) {
+                    if (isLockExpired(seat)) {
+                        throw new LockExpiredException("El bloqueo temporal de la silla " + seatId + " ha expirado.");
+                    }
+                    if (!clientId.equals(seat.lockedByClientId)) {
+                        throw new BookingException("La silla " + seatId + " se encuentra bloqueada por otro comprador.");
+                    }
+                }
+                totalAmount += seat.price;
+                validatedSeats.add(seat);
             }
-            totalAmount += seat.price;
-            validatedSeats.add(seat);
-        }
+                 // Paso 2: Confirmación y cambio a BOOKED 
+            for (Seat s : validatedSeats) {
+                s.state = SeatState.BOOKED;
+                s.lockedByClientId = clientId;
+                s.lockTimestamp = 0L;
+            }
 
-        // Paso 2: Confirmación y cambio a BOOKED (Proceso no atómico)
-        for (Seat s : validatedSeats) {
-            s.state = SeatState.BOOKED;
-            s.lockedByClientId = clientId;
-        }
+            String bookingCode = "RES-" + UUID.randomUUID().toString().substring(0, 8).toUpperCase();
+            long now = System.currentTimeMillis();
 
-        String bookingCode = "RES-" + UUID.randomUUID().toString().substring(0, 8).toUpperCase();
-        long now = System.currentTimeMillis();
+            BookingRecord record = new BookingRecord(
+                    bookingCode,
+                    eventInfo.id,
+                    clientId,
+                    customerName.trim(),
+                    customerEmail.trim(),
+                    uniqueIds,
+                    totalAmount,
+                    now
+            );
+            bookingsList.add(record);
 
-        BookingRecord record = new BookingRecord(
-                bookingCode,
-                eventInfo.id,
-                clientId,
-                customerName.trim(),
-                customerEmail.trim(),
-                seatIds,
-                totalAmount,
-                now
-        );
-        bookingsList.add(record);
+            System.out.printf("[BOOKING-CONFIRMED] Código: %s | Cliente: %s (%s) | %d sillas | Total: $%,.0f COP%n",
+                    bookingCode, customerName, clientId, uniqueIds.length, totalAmount);
 
-        System.out.printf("[BOOKING-CONFIRMED] Código: %s | Cliente: %s (%s) | %d sillas | Total: $%,.0f COP%n",
-                bookingCode, customerName, clientId, seatIds.length, totalAmount);
-
-        return new BookingResult(
-                true,
-                bookingCode,
-                "Reserva confirmada con éxito. Disfrute del evento.",
-                seatIds,
-                totalAmount,
-                now
-        );
-    }
-
+            return new BookingResult(
+                    true,
+                    bookingCode,
+                    "Reserva confirmada con éxito. Disfrute del evento.",
+                    uniqueIds,
+                    totalAmount,
+                    now
+            );
+    }      
+  }
+ 
     @Override
     public Seat[] getMyLockedSeats(String clientId, Current current) {
         List<Seat> list = new ArrayList<>();
