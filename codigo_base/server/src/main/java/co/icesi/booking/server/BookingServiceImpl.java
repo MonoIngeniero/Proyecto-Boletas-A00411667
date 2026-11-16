@@ -6,6 +6,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.locks.ReentrantLock;
 
 import com.zeroc.Ice.Current;
 
@@ -29,6 +30,7 @@ public class BookingServiceImpl implements BookingService {
 
     private final EventInfo eventInfo;
     private final Map<String, Seat> seatsMap = new HashMap<>();
+    private final ReentrantLock lock = new ReentrantLock();
     private final List<BookingRecord> bookingsList = new ArrayList<>();
 
     public BookingServiceImpl() {
@@ -143,47 +145,53 @@ public class BookingServiceImpl implements BookingService {
     @Override
     public LockResult lockSeat(String seatId, String clientId, Current current)
             throws SeatNotFoundException, SeatNotAvailableException {
-
-        Seat seat = seatsMap.get(seatId);
-        if (seat == null) {
-            throw new SeatNotFoundException("Silla no encontrada: " + seatId);
-        }
-
-        // Si estaba bloqueada pero expiró el tiempo de retención, liberarla
-        if (seat.state == SeatState.LOCKED && isLockExpired(seat)) {
-            System.out.printf("[LOCK-EXPIRED] El bloqueo de la silla %s expiró. Liberando.%n", seatId);
-            seat.state = SeatState.AVAILABLE;
-            seat.lockedByClientId = "";
-        }
-
-        // Validación de disponibilidad
-        if (seat.state != SeatState.AVAILABLE) {
-            if (seat.state == SeatState.LOCKED && clientId.equals(seat.lockedByClientId)) {
-                // El mismo cliente renueva el bloqueo
-                seat.lockTimestamp = System.currentTimeMillis();
-                long expiresAt = seat.lockTimestamp + (seat.lockDurationSeconds * 1000L);
-                return new LockResult(true, seatId, "Bloqueo renovado con éxito.", expiresAt);
+        lock.lock();
+        try {                              
+            Seat seat = seatsMap.get(seatId);
+            if (seat == null) {
+                throw new SeatNotFoundException("Silla no encontrada: " + seatId);
             }
-            throw new SeatNotAvailableException(String.format("La silla %s ya no se encuentra disponible (Estado: %s).", seatId, seat.state));
+
+            // Si estaba bloqueada pero expiró el tiempo de retención, liberarla
+            if (seat.state == SeatState.LOCKED && isLockExpired(seat)) {
+                System.out.printf("[LOCK-EXPIRED] El bloqueo de la silla %s expiró. Liberando.%n", seatId);
+                seat.state = SeatState.AVAILABLE;
+                seat.lockedByClientId = "";
+            }
+
+            // Validación de disponibilidad
+            if (seat.state != SeatState.AVAILABLE) {
+                if (seat.state == SeatState.LOCKED && clientId.equals(seat.lockedByClientId)) {
+                    // El mismo cliente renueva el bloqueo
+                    seat.lockTimestamp = System.currentTimeMillis();
+                    long expiresAt = seat.lockTimestamp + (seat.lockDurationSeconds * 1000L);
+                    return new LockResult(true, seatId, "Bloqueo renovado con éxito.", expiresAt);
+                }
+                throw new SeatNotAvailableException(String.format("La silla %s ya no se encuentra disponible (Estado: %s).", seatId, seat.state));
+            }
+
+            // Simulación de latencia de red / I/O en base de datos (No remover)
+            try {
+                Thread.sleep(25);
+            } catch (InterruptedException ignored) {
+            }
+
+            seat.state = SeatState.LOCKED;
+            seat.lockedByClientId = clientId;
+            seat.lockTimestamp = System.currentTimeMillis();
+            seat.lockDurationSeconds = DEFAULT_LOCK_DURATION_SECONDS;
+
+            long expiresAt = seat.lockTimestamp + (DEFAULT_LOCK_DURATION_SECONDS * 1000L);
+            System.out.printf("[LOCK-OK] Silla %s bloqueada exitosamente para cliente: %s (expira en %ds)%n",
+                    seatId, clientId, DEFAULT_LOCK_DURATION_SECONDS);
+
+            return new LockResult(true, seatId, "Silla bloqueada exitosamente.", expiresAt);
+
+        } finally {                        
+            lock.unlock();
         }
-
-        // Simulación de latencia de red / I/O en base de datos (No remover)
-        try {
-            Thread.sleep(25);
-        } catch (InterruptedException ignored) {
-        }
-
-        seat.state = SeatState.LOCKED;
-        seat.lockedByClientId = clientId;
-        seat.lockTimestamp = System.currentTimeMillis();
-        seat.lockDurationSeconds = DEFAULT_LOCK_DURATION_SECONDS;
-
-        long expiresAt = seat.lockTimestamp + (DEFAULT_LOCK_DURATION_SECONDS * 1000L);
-        System.out.printf("[LOCK-OK] Silla %s bloqueada exitosamente para cliente: %s (expira en %ds)%n",
-                seatId, clientId, DEFAULT_LOCK_DURATION_SECONDS);
-
-        return new LockResult(true, seatId, "Silla bloqueada exitosamente.", expiresAt);
     }
+    
 
     @Override
     public boolean releaseSeat(String seatId, String clientId, Current current) throws SeatNotFoundException {
