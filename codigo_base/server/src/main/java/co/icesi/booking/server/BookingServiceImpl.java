@@ -7,6 +7,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.locks.ReentrantLock;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
 
 import com.zeroc.Ice.Current;
 
@@ -33,6 +36,14 @@ public class BookingServiceImpl implements BookingService {
     private final ReentrantLock lock = new ReentrantLock();
     private final List<BookingRecord> bookingsList = new ArrayList<>();
 
+    //en caso de encontrar x silla vencida, la cambia inmediatemente a AVAILABLE
+    //ahora tenemos la expiracion "activa"
+    private final ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor(r -> {
+        Thread t = new Thread(r, "seat-expiration-cleaner");
+        t.setDaemon(true);
+        return t;
+    });
+
     public BookingServiceImpl() {
         this.eventInfo = new EventInfo(
                 "EVT-2026-LIVE",
@@ -43,7 +54,28 @@ public class BookingServiceImpl implements BookingService {
                 120000.0, 75000.0, 45000.0
         );
         initSeats();
+        //expiracion automatica cada 1seg
+        scheduler.scheduleAtFixedRate(this::cleanExpiredLocks, 1, 1, TimeUnit.SECONDS);
     }
+   
+    //recorre las sillas bajo el candado
+    private void cleanExpiredLocks() {
+            lock.lock();
+            try {
+                for (Seat seat : seatsMap.values()) {
+                    if (seat.state == SeatState.LOCKED && isLockExpired(seat)) {
+                        System.out.printf("[AUTO-EXPIRE] Bloqueo de silla %s expiró. Liberada
+                        automáticamente.%n", seat.id);
+                        seat.state = SeatState.AVAILABLE;
+                        seat.lockedByClientId = "";
+                        seat.lockTimestamp = 0L;
+                    }
+                }
+            } finally {
+                lock.unlock();
+            }
+        }
+
 
     private void initSeats() {
         seatsMap.clear();
@@ -83,10 +115,14 @@ public class BookingServiceImpl implements BookingService {
         }
     }
 
+    //antes se dividia(al hacer eso el resultado descartaba los decimales y redondeaba hacia abajo)
+   //la silla no se expiraba a los 90seg sino a los 91seg
+   //convertimos los 90seg a milisegundos y usamos >= 
+  segundos a milisegundos (90 * 1000 = 90.000 ms).
     private boolean isLockExpired(Seat seat) {
         if (seat.state != SeatState.LOCKED) return false;
-        long elapsedSeconds = (System.currentTimeMillis() - seat.lockTimestamp) / 1000L;
-        return elapsedSeconds > seat.lockDurationSeconds;
+        long now = System.currentTimeMillis();
+        return (now - seat.lockTimestamp) >= (seat.lockDurationSeconds * 1000L);
     }
 
     private void updateEventCounters() {
@@ -395,4 +431,26 @@ public class BookingServiceImpl implements BookingService {
         } finally {
             lock.unlock();
         }
+
+     //para detener el limpiador automatico de sillas de forma ordenada, asegurando que termine de liberar la silla actual
+     // y suelte el candado antes de que el servidor se apague por completo
+ 
+    public void shutdown() {
+        scheduler.shutdown();
+        try {
+            if (!scheduler.awaitTermination(2, TimeUnit.SECONDS)) {
+                scheduler.shutdownNow();
+            }
+        } catch (InterruptedException e) {
+            scheduler.shutdownNow();
+            Thread.currentThread().interrupt();
+        }
+        System.out.println("[INFO] Limpiador de bloqueos expirados detenido correctamente.");
+    }
+
+    @Override
+    public void close() {
+        shutdown();
+    }
+
     }
