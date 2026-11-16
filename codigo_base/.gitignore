@@ -4,3 +4,5 @@ build/
 *.iml
 .vscode/
 bin/
+client-js/node_modules/
+client-js/dist/
