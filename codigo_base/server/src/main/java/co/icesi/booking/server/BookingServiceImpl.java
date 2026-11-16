@@ -1,5 +1,7 @@
 package co.icesi.booking.server;
 
+import java.util.Arrays;
+import java.util.LinkedHashSet;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
@@ -10,8 +12,8 @@ import java.util.concurrent.locks.ReentrantLock;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
-import java.util.Random:
-import java.util.regex.Patttern;
+import java.util.Random;
+import java.util.regex.Pattern;
 
 import com.zeroc.Ice.Current;
 
@@ -29,10 +31,10 @@ import BookingApp.SeatNotFoundException;
 import BookingApp.SeatState;
 import BookingApp.SeatZone;
 
-public class BookingServiceImpl implements BookingService {
+public class BookingServiceImpl implements BookingService, AutoCloseable {
 
     public static final long DEFAULT_LOCK_DURATION_SECONDS = 90;
-
+    private static final String CODE_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
     private static final Pattern EMAIL_PATTERN = Pattern.compile("^[A-Za-z0-9+_.-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}$");
     private final Random random = new Random();
 
@@ -85,8 +87,7 @@ public class BookingServiceImpl implements BookingService {
             try {
                 for (Seat seat : seatsMap.values()) {
                     if (seat.state == SeatState.LOCKED && isLockExpired(seat)) {
-                        System.out.printf("[AUTO-EXPIRE] Bloqueo de silla %s expiró. Liberada
-                        automáticamente.%n", seat.id);
+                        System.out.printf("[AUTO-EXPIRE] Bloqueo de silla %s expiró. Liberada automáticamente.%n", seat.id);
                         seat.state = SeatState.AVAILABLE;
                         seat.lockedByClientId = "";
                         seat.lockTimestamp = 0L;
@@ -138,8 +139,7 @@ public class BookingServiceImpl implements BookingService {
 
     //antes se dividia(al hacer eso el resultado descartaba los decimales y redondeaba hacia abajo)
    //la silla no se expiraba a los 90seg sino a los 91seg
-   //convertimos los 90seg a milisegundos y usamos >= 
-  segundos a milisegundos (90 * 1000 = 90.000 ms).
+   //convertimos los 90seg a milisegundos y usamos >= segundos a milisegundos (90 * 1000 = 90.000 ms).
     private boolean isLockExpired(Seat seat) {
         if (seat.state != SeatState.LOCKED) return false;
         long now = System.currentTimeMillis();
@@ -247,7 +247,7 @@ public class BookingServiceImpl implements BookingService {
         } finally {
             lock.unlock();
         }
-
+    }
     @Override
     public LockResult lockSeat(String seatId, String clientId, Current current) throws SeatNotFoundException, SeatNotAvailableException {
 
@@ -487,7 +487,7 @@ public class BookingServiceImpl implements BookingService {
         } finally {
             lock.unlock();
         }
-
+    }
      //para detener el limpiador automatico de sillas de forma ordenada, asegurando que termine de liberar la silla actual
      // y suelte el candado antes de que el servidor se apague por completo
  
