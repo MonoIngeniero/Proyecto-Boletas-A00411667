@@ -8,6 +8,22 @@
         filename: 'bundle.js',
         clean: true,
       },
+      resolve: {
+        fallback: {
+          fs: false,
+          net: false,
+          tls: false,
+          crypto: false,
+          path: false,
+          stream: false,
+          http: false,
+          https: false,
+          zlib: false,
+          dgram: false,
+          child_process: false,
+          os: false,
+        },
+      },
       module: {
         rules: [
           {
