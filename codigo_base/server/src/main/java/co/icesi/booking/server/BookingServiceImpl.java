@@ -107,40 +107,86 @@ public class BookingServiceImpl implements BookingService {
         eventInfo.lockedSeats = locked;
         eventInfo.bookedSeats = booked;
     }
-
+//aqui lo q se hace es: calcular contadores y retornar nuevo objeto bajo el candado
     @Override
-    public EventInfo getEventInfo(Current current) {
-        updateEventCounters();
-        return eventInfo;
+     public EventInfo getEventInfo(Current current) {
+        lock.lock();
+        try {
+            int avail = 0;
+            int locked = 0;
+            int booked = 0;
+            for (Seat s : seatsMap.values()) {
+                if (s.state == SeatState.BOOKED) {
+                    booked++;
+                } else if (s.state == SeatState.LOCKED && !isLockExpired(s)) {
+                    locked++;
+                } else {
+                    avail++;
+                }
+            }
+            return new EventInfo(
+                    eventInfo.id,
+                    eventInfo.name,
+                    eventInfo.date,
+                    eventInfo.venue,
+                    seatsMap.size(),
+                    avail,
+                    locked,
+                    booked,
+                    eventInfo.vipPrice,
+                    eventInfo.plateaPrice,
+                    eventInfo.generalPrice
+            );
+        } finally {
+            lock.unlock();
+        }
     }
 
+    //se itera bajo el candado y se agrega copia (s.clone() )
     @Override
     public Seat[] getAllSeats(Current current) {
-        List<Seat> list = new ArrayList<>(seatsMap.values());
-        list.sort(Comparator.comparing((Seat s) -> s.row).thenComparingInt(s -> s.number));
-        return list.toArray(new Seat[0]);
+        lock.lock();
+        try {
+            List<Seat> list = new ArrayList<>();
+            for (Seat s : seatsMap.values()) {
+                list.add(s.clone());
+            }
+            list.sort(Comparator.comparing((Seat s) -> s.row).thenComparingInt(s -> s.number));
+            return list.toArray(new Seat[0]);
+        } finally {
+            lock.unlock();
+        }
     }
 
     @Override
     public Seat[] getSeatsByZone(SeatZone zone, Current current) {
-        List<Seat> list = new ArrayList<>();
-        for (Seat s : seatsMap.values()) {
-            if (s.zone == zone) {
-                list.add(s);
+        lock.lock();
+        try {
+            List<Seat> list = new ArrayList<>();
+            for (Seat s : seatsMap.values()) {
+                if (s.zone == zone) {
+                    list.add(s.clone());
+                }
             }
+            list.sort(Comparator.comparing((Seat s) -> s.row).thenComparingInt(s -> s.number));
+            return list.toArray(new Seat[0]);
+        } finally {
+            lock.unlock();
         }
-        list.sort(Comparator.comparing((Seat s) -> s.row).thenComparingInt(s -> s.number));
-        return list.toArray(new Seat[0]);
     }
 
     @Override
     public Seat getSeat(String seatId, Current current) throws SeatNotFoundException {
-        Seat seat = seatsMap.get(seatId);
-        if (seat == null) {
-            throw new SeatNotFoundException("Silla no encontrada en inventario: " + seatId);
+        lock.lock();
+        try {
+            Seat seat = seatsMap.get(seatId);
+            if (seat == null) {
+                throw new SeatNotFoundException("Silla no encontrada en inventario: " + seatId);
+            }
+            return seat.clone();
+        } finally {
+            lock.unlock();
         }
-        return seat;
-    }
 
     @Override
     public LockResult lockSeat(String seatId, String clientId, Current current)
@@ -193,24 +239,32 @@ public class BookingServiceImpl implements BookingService {
     }
     
 
+//toma el candado
     @Override
-    public boolean releaseSeat(String seatId, String clientId, Current current) throws SeatNotFoundException {
-        Seat seat = seatsMap.get(seatId);
-        if (seat == null) {
-            throw new SeatNotFoundException("Silla no encontrada: " + seatId);
-        }
-
-        // Solo puede liberar el cliente que la bloqueó o si ya expiró
-        if (seat.state == SeatState.LOCKED) {
-            if (clientId.equals(seat.lockedByClientId) || isLockExpired(seat)) {
-                seat.state = SeatState.AVAILABLE;
-                seat.lockedByClientId = "";
-                seat.lockTimestamp = 0L;
-                System.out.printf("[RELEASE-OK] Silla %s liberada por cliente: %s%n", seatId, clientId);
-                return true;
+    public boolean releaseSeat(String seatId, String clientId, Current current) throws
+    SeatNotFoundException {
+        lock.lock();
+        try {
+            Seat seat = seatsMap.get(seatId);
+            if (seat == null) {
+                throw new SeatNotFoundException("Silla no encontrada: " + seatId);
             }
+
+            // Solo puede liberar el cliente que la bloqueó o si ya expiró
+            if (seat.state == SeatState.LOCKED) {
+                if (clientId.equals(seat.lockedByClientId) || isLockExpired(seat)) {
+                    seat.state = SeatState.AVAILABLE;
+                    seat.lockedByClientId = "";
+                    seat.lockTimestamp = 0L;
+                    System.out.printf("[RELEASE-OK] Silla %s liberada por cliente: %s%n", seatId,
+                    clientId);
+                    return true;
+                }
+            }
+            return false;
+        } finally {
+            lock.unlock();
         }
-        return false;
     }
 
     @Override
@@ -297,33 +351,48 @@ public class BookingServiceImpl implements BookingService {
  
     @Override
     public Seat[] getMyLockedSeats(String clientId, Current current) {
-        List<Seat> list = new ArrayList<>();
-        if (clientId != null && !clientId.isEmpty()) {
-            for (Seat s : seatsMap.values()) {
-                if (s.state == SeatState.LOCKED && clientId.equals(s.lockedByClientId) && !isLockExpired(s)) {
-                    list.add(s);
+        lock.lock();
+        try {
+            List<Seat> list = new ArrayList<>();
+            if (clientId != null && !clientId.isEmpty()) {
+                for (Seat s : seatsMap.values()) {
+                    if (s.state == SeatState.LOCKED && clientId.equals(s.lockedByClientId) &&
+                    !isLockExpired(s)) {
+                        list.add(s.clone());
+                    }
                 }
             }
+            return list.toArray(new Seat[0]);
+        } finally {
+            lock.unlock();
         }
-        return list.toArray(new Seat[0]);
     }
 
     @Override
     public BookingRecord[] getMyBookings(String clientId, Current current) {
-        List<BookingRecord> list = new ArrayList<>();
-        if (clientId != null && !clientId.isEmpty()) {
-            for (BookingRecord b : bookingsList) {
-                if (clientId.equals(b.clientId)) {
-                    list.add(b);
+        lock.lock();
+        try {
+            List<BookingRecord> list = new ArrayList<>();
+            if (clientId != null && !clientId.isEmpty()) {
+                for (BookingRecord b : bookingsList) {
+                    if (clientId.equals(b.clientId)) {
+                        list.add(b.clone());
+                    }
                 }
             }
+            return list.toArray(new BookingRecord[0]);
+        } finally {
+            lock.unlock();
         }
-        return list.toArray(new BookingRecord[0]);
     }
 
     @Override
     public void resetSeats(Current current) {
-        initSeats();
-        System.out.println("[RESET] Inventario y reservas reiniciadas a estado de fábrica.");
+        lock.lock();
+        try {
+            initSeats();
+            System.out.println("[RESET] Inventario y reservas reiniciadas a estado de fábrica.");
+        } finally {
+            lock.unlock();
+        }
     }
-}
