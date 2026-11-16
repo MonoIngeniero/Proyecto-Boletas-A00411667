@@ -10,6 +10,8 @@ import java.util.concurrent.locks.ReentrantLock;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
+import java.util.Random:
+import java.util.regex.Patttern;
 
 import com.zeroc.Ice.Current;
 
@@ -31,6 +33,9 @@ public class BookingServiceImpl implements BookingService {
 
     public static final long DEFAULT_LOCK_DURATION_SECONDS = 90;
 
+    private static final Pattern EMAIL_PATTERN = Pattern.compile("^[A-Za-z0-9+_.-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}$");
+    private final Random random = new Random();
+
     private final EventInfo eventInfo;
     private final Map<String, Seat> seatsMap = new HashMap<>();
     private final ReentrantLock lock = new ReentrantLock();
@@ -43,6 +48,22 @@ public class BookingServiceImpl implements BookingService {
         t.setDaemon(true);
         return t;
     });
+
+    //genera RES-XXXXXX garantizando que no este repetido
+    private String generateUniqueBookingCode() {
+        String code;
+        boolean existe;
+        do{
+            StringBuilder sb = new StringBuilder("RES-");
+            for (int i = 0; i < 6; i++ ){
+                sb.append(CODE_ALPHABET.charAt(random.nextInt(CODE_ALPHABET.length())));
+            }
+            code =sb.toString();
+            final String candidate = code;
+            existe = bookingsList.stream().anyMatch(b -> b.bookingCode.equals(candidate));
+        } while (existe);
+        return code;
+    }
 
     public BookingServiceImpl() {
         this.eventInfo = new EventInfo(
@@ -213,6 +234,9 @@ public class BookingServiceImpl implements BookingService {
 
     @Override
     public Seat getSeat(String seatId, Current current) throws SeatNotFoundException {
+        if (seatId == null || seatId.trim().isEmpty()) {
+            throw new SeatNotFoundException("El identificador de silla no puede ser nulo o vacio.");
+        }
         lock.lock();
         try {
             Seat seat = seatsMap.get(seatId);
@@ -225,8 +249,14 @@ public class BookingServiceImpl implements BookingService {
         }
 
     @Override
-    public LockResult lockSeat(String seatId, String clientId, Current current)
-            throws SeatNotFoundException, SeatNotAvailableException {
+    public LockResult lockSeat(String seatId, String clientId, Current current) throws SeatNotFoundException, SeatNotAvailableException {
+
+        if (seatId == null || seatId.trim().isEmpty()) {
+            throw new SeatNotFoundException("El identificador de silla no puede ser nulo o vacio.");
+        }
+        if (clientId == null || clientId.trim().isEmpty()) {
+            throw new SeatNotAvailableException("El identificador de cliente no puede ser nulo o vacio.");
+        }
         lock.lock();
         try {                              
             Seat seat = seatsMap.get(seatId);
@@ -277,13 +307,24 @@ public class BookingServiceImpl implements BookingService {
 
 //toma el candado
     @Override
-    public boolean releaseSeat(String seatId, String clientId, Current current) throws
-    SeatNotFoundException {
+    public boolean releaseSeat(String seatId, String clientId, Current current) throws SeatNotFoundException {
+        if (seatId == null || seatId.trim().isEmpty()) {
+            throw new SeatNotFoundException("El identificador de silla no puede ser nulo o vacio.");
+        }
+        if (clientId == null || clientId.trim().isEmpty()) {
+            return false;
+        }
         lock.lock();
         try {
             Seat seat = seatsMap.get(seatId);
             if (seat == null) {
                 throw new SeatNotFoundException("Silla no encontrada: " + seatId);
+            }
+
+            // no toca una silla vendida (BOOKED) 
+            // o que ya este disponible (AVAILABLE) no se puede liberar pq ya esta libre 
+            if (seat.state != SeatState.LOCKED) {
+                return false;
             }
 
             // Solo puede liberar el cliente que la bloqueó o si ya expiró
@@ -304,21 +345,25 @@ public class BookingServiceImpl implements BookingService {
     }
 
     @Override
-    public BookingResult confirmBooking(String[] seatIds, String clientId, String customerName, String customerEmail, Current current)
-            throws InvalidBookingException, BookingException {
+    public BookingResult confirmBooking(String[] seatIds, String clientId, String customerName, String customerEmail, Current current) throws InvalidBookingException, BookingException {
 
         if (seatIds == null || seatIds.length == 0) {
             throw new InvalidBookingException("Debe seleccionar al menos una silla para completar la reserva.");
         }
-        //el id el usuario nunca lo escribe (esto es lo q genera el cliente y lo manda en cada llamada)
+        for (String sid : seatIds) {
+            if (sid == null || sid.trim().isEmpty()) {
+                throw new InvalidBookingException("Se proporcionó un identificador de silla nulo o vacio.");
+            }
+        }
         if (clientId == null || clientId.trim().isEmpty()) {
-        throw new InvalidBookingException("El identificador de cliente es obligatorio.");
+            throw new InvalidBookingException("El identificador de cliente es obligatorio.");
         }
         if (customerName == null || customerName.trim().isEmpty()) {
             throw new InvalidBookingException("El nombre del comprador es obligatorio.");
         }
-        if (customerEmail == null || !customerEmail.contains("@")) {
-            throw new InvalidBookingException("El correo electrónico del comprador es inválido.");
+        // validacion del correo con pattern
+        if (customerEmail == null || !EMAIL_PATTERN.matcher(customerEmail.trim()).matches()) {
+            throw new InvalidBookingException("El correo electrónico del comprador es invalido.");
         }
 
         // quitar duplicados conservando el orden
@@ -382,11 +427,18 @@ public class BookingServiceImpl implements BookingService {
                     totalAmount,
                     now
             );
-    }      
+    }finally {
+        lock.unlock();
+    } 
   }
  
     @Override
     public Seat[] getMyLockedSeats(String clientId, Current current) {
+
+        //si es nulo o vacio, devolvemos arreglo vacio sin adquiriri el lock
+        if (clientId == null || clientId.trim().isEmpty()) {
+            return new Seat[0];
+        }
         lock.lock();
         try {
             List<Seat> list = new ArrayList<>();
@@ -406,6 +458,10 @@ public class BookingServiceImpl implements BookingService {
 
     @Override
     public BookingRecord[] getMyBookings(String clientId, Current current) {
+        //si es nulo o vacio, devolvemos arreglo vacio sin adquiriri el lock
+        if (clientId == null || clientId.trim().isEmpty()) {
+            return new BookingRecord[0];
+        }
         lock.lock();
         try {
             List<BookingRecord> list = new ArrayList<>();
