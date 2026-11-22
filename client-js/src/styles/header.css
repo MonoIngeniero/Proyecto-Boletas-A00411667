@@ -1,0 +1,25 @@
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.header__title { margin: 0; font-size: 22px; }
+.header__subtitle { margin: 4px 0 0; color: var(--muted); font-size: 14px; }
+
+.header__stats { display: flex; gap: 10px; }
+
+.stat {
+  min-width: 96px;
+  padding: 8px 12px;
+  text-align: center;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+}
+
+.stat__label { display: block; font-size: 10px; letter-spacing: .05em; color: var(--muted); }
+.stat__value { display: block; font-size: 18px; font-weight: bold; }
+.stat__value--offline { color: #b00020; }

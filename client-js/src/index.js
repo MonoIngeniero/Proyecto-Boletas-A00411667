@@ -1,40 +1,45 @@
-    import { getBookingService } from './services/iceService.js';
+import './styles/base.css';
+import { getBookingService } from './services/iceService.js';
+import { startSeatsPolling } from './services/pollingService.js';
+import { isAvailable, isLocked, isBooked, formatIceError } from './utils/iceutils.js';
+import { createHeader } from './components/Header.js';
 
-    async function initApp() {
-      console.log('Iniciando cliente web de Reserva de Boletas...');
+// cuenta las sillas por estado comparando enums por referencia
+function countSeats(seats) {
+  return {
+    available: seats.filter(isAvailable).length,
+    locked: seats.filter(isLocked).length,
+    booked: seats.filter(isBooked).length,
+  };
+}
 
-      try {
-        const service = await getBookingService();
+async function initApp() {
+  const app = document.createElement('div');
+  app.className = 'app';
+  document.body.appendChild(app);
 
-        // Prueba de llamada RPC asíncrona: obtener información del evento
-        const eventInfo = await service.getEventInfo();
-        console.log('Información del evento recibida del servidor:', eventInfo);
+  const header = createHeader();
+  app.appendChild(header.element);
 
-        // Renderizado básico inicial de prueba
-        document.body.innerHTML = `
-          <div style="font-family: Arial, sans-serif; padding: 20px;">
-            <h1>🎟️ ${eventInfo.name}</h1>
-            <p><strong>Lugar:</strong> ${eventInfo.venue}</p>
-            <p><strong>Fecha:</strong> ${eventInfo.date}</p>
-            <p><strong>Total de Sillas:</strong> ${eventInfo.totalSeats}</p>
-            <p><strong>Disponibles:</strong> ${eventInfo.availableSeats} |
-               <strong>Bloqueadas:</strong> ${eventInfo.lockedSeats} |
-               <strong>Vendidas:</strong> ${eventInfo.bookedSeats}</p>
-            <p style="color: green; font-weight: bold;"> Conectado exitosamente al servidor
-            ZeroC Ice vía WebSocket.</p>
-          </div>
-        `;
-      } catch (error) {
-        console.error('Fallo en la conexión inicial:', error);
-        document.body.innerHTML = `
-          <div style="font-family: Arial, sans-serif; padding: 20px; color: red;">
-            <h2> Error de conexión con el backend</h2>
-            <p>${error.message || error}</p>
-            runServer</code>).</p>
-          </div>
-        `;
-      }
-    }
+  try {
+    const service = await getBookingService();
+    header.setEventInfo(await service.getEventInfo());
 
-    // Ejecutar al cargar la página
-    window.addEventListener('DOMContentLoaded', initApp);
+    startSeatsPolling(
+      (seats) => {
+        header.setOnline(true);
+        header.setCounts(countSeats(seats));
+      },
+
+      () => header.setOnline(false)
+    );
+  } catch (error) {
+    header.setOnline(false);
+    const box = document.createElement('div');
+    box.className = 'error-box';
+    box.textContent = `No se pudo conectar con el servidor: ${formatIceError(error)}`;
+    app.appendChild(box);
+  }
+}
+
+window.addEventListener('DOMContentLoaded', initApp);

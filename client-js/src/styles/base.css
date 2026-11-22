@@ -1,0 +1,42 @@
+:root {
+  --ink: #222;
+  --paper: #fff;
+  --panel: #f7f7f7;
+  --line: #333;
+  --muted: #666;
+  --radius: 6px;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  font-family: Arial, Helvetica, sans-serif;
+  color: var(--ink);
+  background: #eee;
+}
+
+.app {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.card {
+  background: var(--paper);
+  border: 2px solid var(--line);
+  border-radius: var(--radius);
+  padding: 16px;
+
+}
+
+.error-box {
+  border: 2px solid #b00020;
+  color: #b00020;
+  padding: 12px;
+  border-radius: var(--radius);
+  background: #fff;
+}
