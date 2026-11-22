@@ -1,5 +1,5 @@
     import { getBookingService } from './iceService.js';
-    import { normalizeSeat } from '../utils/iceUtils.js';
+    import { normalizeSeat } from '../utils/iceutils.js';
 
     let pollingIntervalId = null;
     let isPollingActive = false;

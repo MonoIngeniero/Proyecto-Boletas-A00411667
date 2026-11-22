@@ -60,7 +60,7 @@ En una segunda terminal:
 ```
 *Permite consultar el aforo, ver el mapa de sillas en consola, bloquear sillas, confirmar compras y reiniciar el inventario.*
 
-### Paso 3: Demostrar la Vulnerabilidad de Concurrencia
+### Paso 3: Validacion de Concurrencia thread-safe
 Puedes ejecutar la prueba de estrés automatizada directamente desde el cliente:
 ```bash
 ./gradlew runClient --args="--test-concurrency"

@@ -1,0 +1,7 @@
+client-js/node_modules/
+client-js/dist/
+codigo_base/.gradle/
+codigo_base/**/build/
+.idea/
+.vscode/
+*.iml

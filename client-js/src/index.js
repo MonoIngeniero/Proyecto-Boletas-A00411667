@@ -30,7 +30,6 @@
           <div style="font-family: Arial, sans-serif; padding: 20px; color: red;">
             <h2> Error de conexión con el backend</h2>
             <p>${error.message || error}</p>
-            <p>Asegúrate de que el servidor Java esté corriendo (<code>./gradlew
             runServer</code>).</p>
           </div>
         `;

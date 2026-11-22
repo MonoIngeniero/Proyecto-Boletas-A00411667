@@ -7,7 +7,6 @@ import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.UUID;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
@@ -375,7 +374,7 @@ public class BookingServiceImpl implements BookingService, AutoCloseable {
             List<Seat> validatedSeats = new ArrayList<>();
 
             // Paso 1: Validación preliminar de las sillas
-            for (String seatId : seatIds) {
+            for (String seatId : uniqueIds) {
                 Seat seat = seatsMap.get(seatId);
                 if (seat == null) {
                     throw new SeatNotFoundException("Silla no existe: " + seatId);
@@ -383,13 +382,17 @@ public class BookingServiceImpl implements BookingService, AutoCloseable {
                 if (seat.state == SeatState.BOOKED) {
                     throw new BookingException("La silla " + seatId + " ya fue vendida definitivamente.");
                 }
-                if (seat.state == SeatState.LOCKED) {
-                    if (isLockExpired(seat)) {
-                        throw new LockExpiredException("El bloqueo temporal de la silla " + seatId + " ha expirado.");
-                    }
-                    if (!clientId.equals(seat.lockedByClientId)) {
-                        throw new BookingException("La silla " + seatId + " se encuentra bloqueada por otro comprador.");
-                    }
+                // una silla libre no puede comprarse sin bloqueo previo
+                if (seat.state == SeatState.AVAILABLE) {
+                    throw new LockExpiredException("La silla " + seatId
+                            + " no esta bloqueada (su bloqueo expiro o nunca existio).");
+                }
+                // el estado es LOCKED
+                if (isLockExpired(seat)) {
+                    throw new LockExpiredException("El bloqueo temporal de la silla " + seatId + " ha expirado.");
+                }
+                if (!clientId.equals(seat.lockedByClientId)) {
+                    throw new BookingException("La silla " + seatId + " se encuentra bloqueada por otro comprador.");
                 }
                 totalAmount += seat.price;
                 validatedSeats.add(seat);
@@ -401,7 +404,7 @@ public class BookingServiceImpl implements BookingService, AutoCloseable {
                 s.lockTimestamp = 0L;
             }
 
-            String bookingCode = "RES-" + UUID.randomUUID().toString().substring(0, 8).toUpperCase();
+            String bookingCode = generateUniqueBookingCode();
             long now = System.currentTimeMillis();
 
             BookingRecord record = new BookingRecord(
