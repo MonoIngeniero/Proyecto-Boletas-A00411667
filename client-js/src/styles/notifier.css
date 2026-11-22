@@ -1,0 +1,19 @@
+.toasts {
+  position: fixed;
+  top: 16px;
+  right: 16px;
+  z-index: 1000;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.toast {
+  max-width: 320px;
+  padding: 10px 14px;
+  font-size: 13px;
+  color: #fff;
+  background: var(--ink);
+  border-radius: var(--radius);
+}
+.toast--error { background: #b00020; }
+.toast--success { background: #2e7d32; }

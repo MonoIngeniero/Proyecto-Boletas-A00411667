@@ -40,3 +40,25 @@ body {
   border-radius: var(--radius);
   background: #fff;
 }
+
+.main {
+  display: grid;
+  grid-template-columns: 1fr 340px;
+  gap: 16px;
+  align-items: start;
+}
+@media (max-width: 900px) { .main { grid-template-columns: 1fr; } }
+
+.btn {
+  width: 100%;
+  padding: 12px;
+  margin-top: 8px;
+  font-size: 14px;
+  font-weight: bold;
+  cursor: pointer;
+  border: 2px solid var(--ink);
+  border-radius: var(--radius);
+}
+.btn--primary { background: var(--ink); color: var(--paper); }
+.btn--secondary { background: var(--paper); color: var(--ink); }
+.btn:disabled { opacity: .4; cursor: not-allowed; }
