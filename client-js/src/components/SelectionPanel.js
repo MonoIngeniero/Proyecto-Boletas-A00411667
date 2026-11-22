@@ -1,19 +1,8 @@
 import '../styles/selection.css';
 import { getSeatZoneName } from '../utils/iceutils.js';
+import { formatMoney, formatTime, expiresAt } from '../utils/format.js';
 
 const WARNING_MS = 15000; // el temporizador se pone rojo con 15s o menos
-
-const formatMoney = (value) => `$${value.toLocaleString('es-CO')}`;
-
-function formatTime(ms) {
-  const totalSeconds = Math.max(0, Math.ceil(ms / 1000));
-  const mm = String(Math.floor(totalSeconds / 60)).padStart(2, '0');
-  const ss = String(totalSeconds % 60).padStart(2, '0');
-  return `${mm}:${ss}`;
-}
-
-// ms en que vence el bloqueo de una silla, segun el servidor
-const expiresAt = (seat) => seat.lockTimestamp + seat.lockDurationSeconds * 1000;
 
 function createButton(text, className) {
   const btn = document.createElement('button');
@@ -23,7 +12,8 @@ function createButton(text, className) {
   return btn;
 }
 
-export function createSelectionPanel({ onRelease, onReleaseAll, onConfirm }) {
+export function createSelectionPanel({ onRelease, onReleaseAll, onConfirm, onShowBookings }) {
+    
   const element = document.createElement('aside');
   element.className = 'selection card';
 
@@ -61,7 +51,13 @@ export function createSelectionPanel({ onRelease, onReleaseAll, onConfirm }) {
   confirmBtn.addEventListener('click', () => onConfirm());
   releaseBtn.addEventListener('click', () => onReleaseAll());
 
-  element.append(title, timerBox, subtitle, list, totalRow, confirmBtn, releaseBtn);
+  const bookingsLink = document.createElement('button');
+  bookingsLink.type = 'button'; 
+  bookingsLink.className = 'link-btn';
+  bookingsLink.textContent = 'Ver mis reservas';
+  bookingsLink.addEventListener('click', () => onShowBookings());
+
+  element.append(title, timerBox, subtitle, list, totalRow, confirmBtn, releaseBtn, bookingsLink);
 
 
   let mySeats = [];

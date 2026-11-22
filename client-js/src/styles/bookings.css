@@ -1,0 +1,24 @@
+.bookings { display: flex; flex-direction: column; gap: 10px; margin: 14px 0; }
+.bookings__empty { color: var(--muted); font-size: 13px; font-style: italic; }
+
+.booking {
+  padding: 12px;
+  border: 1.5px solid var(--line);
+  border-radius: var(--radius);
+  font-size: 13px;
+}
+.booking__code { margin-bottom: 6px; font-size: 16px; font-weight: bold; }
+.booking__line { margin: 2px 0; }
+
+.link-btn {
+  display: block;
+  margin: 12px auto 0;
+  padding: 4px;
+  font-size: 13px;
+  color: var(--muted);
+  text-decoration: underline;
+  cursor: pointer;
+  background: none;
+  border: none;
+}
+.link-btn:hover { color: var(--ink); }
