@@ -1,13 +1,12 @@
-
 import '../styles/seatmap.css';
-import { getSeatZoneName } from '../utils/iceutils.js';
-import { isLocked, isBooked } from '../utils/iceutils.js';
+import { getSeatZoneName, isLocked, isBooked } from '../utils/iceutils.js';
+import { formatMoney } from '../utils/format.js';
 
 const ZONE_ORDER = ['VIP', 'PLATEA', 'GENERAL'];
 const ZONE_TITLES = { VIP: 'Zona VIP', PLATEA: 'Zona Platea', GENERAL: 'Zona General' };
 const AISLE_AFTER = 5; // pasillo entre la silla 5 y la 6
 
-// decide como se ve una silla segun su estado y quien la tiene
+// decide cómo se ve una silla según su estado y quién la tiene
 function visualStatus(seat, clientId) {
   if (isBooked(seat)) return 'booked';
   if (isLocked(seat)) return seat.lockedByClientId === clientId ? 'mine' : 'locked';
@@ -54,9 +53,19 @@ export function createSeatMap({ onSeatClick }) {
 
   element.append(title, stage, grid, legend);
 
-  const buttons = new Map();   // seatId -> <button>
-  const latestSeats = new Map(); // seatId -> ultimo objeto seat recibido
+  const buttons = new Map();     // seatId -> <button>
+  const latestSeats = new Map(); // seatId -> último objeto seat recibido
+  const zoneTitles = {};         // 'VIP' | 'PLATEA' | 'GENERAL' -> nodo <h3>
+  let zonePrices = null;         // precios por zona, vienen de getEventInfo()
   let built = false;
+
+  // escribe "Zona VIP · $120.000" cuando ya hay precios y ya existen los títulos
+  function applyPrices() {
+    if (!zonePrices) return;
+    for (const [zone, el] of Object.entries(zoneTitles)) {
+      el.textContent = `${ZONE_TITLES[zone]} · ${formatMoney(zonePrices[zone])}`;
+    }
+  }
 
   // se ejecuta una sola vez: crea las 90 sillas
   function build(seats) {
@@ -66,6 +75,7 @@ export function createSeatMap({ onSeatClick }) {
       const zoneTitle = document.createElement('h3');
       zoneTitle.className = 'zone__title';
       zoneTitle.textContent = ZONE_TITLES[zoneName];
+      zoneTitles[zoneName] = zoneTitle;
       zone.appendChild(zoneTitle);
 
       const zoneSeats = seats.filter((s) => getSeatZoneName(s.zone) === zoneName);
@@ -98,11 +108,13 @@ export function createSeatMap({ onSeatClick }) {
       }
       grid.appendChild(zone);
     }
+    applyPrices(); // por si los precios llegaron antes que las sillas
     built = true;
   }
 
   return {
     element,
+
     // se llama con cada respuesta del sondeo
     update(seats, clientId) {
       if (!built) build(seats);
@@ -113,9 +125,14 @@ export function createSeatMap({ onSeatClick }) {
         const status = visualStatus(seat, clientId);
         btn.className = `seat seat--${status}`;
         btn.disabled = status === 'booked' || status === 'locked';
-        //con esto muestro los precios que estan en el contrato (al pasar el mouse por encima)
-        btn.title = `${seat.id} · $${seat.price.toLocaleString('es-CO')}`;
+        btn.title = `${seat.id} · ${formatMoney(seat.price)}`;
       }
+    },
+
+    // info viene de getEventInfo()
+    setPrices(info) {
+      zonePrices = { VIP: info.vipPrice, PLATEA: info.plateaPrice, GENERAL: info.generalPrice };
+      applyPrices();
     },
   };
 }
