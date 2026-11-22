@@ -27,10 +27,9 @@ async function initApp() {
   const notifier = createNotifier();
   document.body.appendChild(notifier.element);
 
-  // ---- componentes ----
+
   const header = createHeader();
   const seatMap = createSeatMap({ onSeatClick: handleSeatClick });
-
   const panel = createSelectionPanel({
     onRelease: releaseOne,
     onReleaseAll: releaseAll,
@@ -43,32 +42,70 @@ async function initApp() {
   });
   const bookingsModal = createBookingsModal();
 
-  // ---- estructura de la página ----
   const app = document.createElement('div');
   app.className = 'app';
   const main = document.createElement('div');
   main.className = 'main';
   main.append(seatMap.element, panel.element);
   app.append(header.element, main);
+
+  // aviso de desconexión (RF-7), oculto mientras haya conexión
+  const offlineBox = document.createElement('div');
+  offlineBox.className = 'error-box';
+  offlineBox.textContent = 'Sin conexión con el servidor. Reintentando automáticamente...';
+  offlineBox.hidden = true;
+  app.prepend(offlineBox);
+
   document.body.append(app, modal.element, bookingsModal.element);
 
-  // ---- estado local ----
+
   let mySeats = [];                // sillas retenidas por este cliente (última actualización)
   let mySeatIds = [];
-  const releasedByMe = new Set();  // sillas que solté o compré a propósito
+  const releasedByMe = new Set();  // sillas que se soltaron o compradas 
   const busy = new Set();          // sillas con una llamada RPC en curso
+  let online = null;               
+  let eventInfoLoaded = false;     // si ya cargamos nombre del evento y precios
+
+  function setConnection(isOnline) {
+    header.setOnline(isOnline);
+    offlineBox.hidden = isOnline;
+    // avisa solo cuando cambia el estado, no en cada consulta
+    if (online !== null && online !== isOnline) {
+      notifier.show(
+        isOnline ? 'Conexión con el servidor restablecida.' : 'Se perdió la conexión con el servidor.',
+        isOnline ? 'success' : 'error'
+      );
+    }
+    online = isOnline;
+  }
+
+  // carga nombre del evento y precios
+  // si falla, se reintenta en la próxima actualización
+  async function loadEventInfo() {
+    if (eventInfoLoaded) return;
+    eventInfoLoaded = true; // evita llamadas simultáneas
+    try {
+      const service = await getBookingService();
+      const info = await service.getEventInfo();
+      header.setEventInfo(info);
+      seatMap.setPrices(info);
+    } catch (error) {
+      eventInfoLoaded = false;
+    }
+  }
 
   // aplica una lista de sillas a todos los componentes
   function applySeats(seats) {
-    header.setOnline(true);
+    setConnection(true);
+    loadEventInfo();
     header.setCounts(countSeats(seats));
     seatMap.update(seats, clientId);
-
 
     const mine = seats.filter((s) => isLocked(s) && s.lockedByClientId === clientId);
     const nowIds = mine.map((s) => s.id);
 
-    // una silla que estaba en mi carrito y desapareció sin que yo la soltara: expiró
+    // una silla que estaba en el carrito y desapareció sin que la soltara
+    // : expiró
     for (const id of mySeatIds) {
       if (!nowIds.includes(id)) {
         if (releasedByMe.has(id)) releasedByMe.delete(id);
@@ -81,22 +118,23 @@ async function initApp() {
     modal.updateSeats(mine);
   }
 
-  // consulta inmediata, sin esperar el siguiente ciclo del sondeo
+  // consulta inmediata
+  //  sin esperar el siguiente ciclo del sondeo
   async function refresh() {
     try {
       applySeats(await fetchSeatsOnce());
     } catch (error) {
-      header.setOnline(false);
+      setConnection(false);
     }
   }
 
-  // ejecuta una llamada RPC sobre una silla, evitando doble clic y notificando errores
+  // ejecuta una llamada RPC sobre una silla
+  // evitando doble clic y notificando errores
   async function runSeatAction(seatId, action) {
     if (busy.has(seatId)) return;
     busy.add(seatId);
     try {
       await action(await getBookingService());
-
     } catch (error) {
       notifier.show(formatIceError(error), 'error');
     } finally {
@@ -129,7 +167,6 @@ async function initApp() {
   }
 
   // RF-5: confirma la compra de todas las sillas retenidas
-
   async function handleCheckout({ name, email }) {
     modal.setBusy(true);
     try {
@@ -158,21 +195,9 @@ async function initApp() {
     }
   }
 
-  // ---- arranque: conexión y sondeo ----
-  try {
-    const service = await getBookingService();
-    const info = await service.getEventInfo();
-
-    header.setEventInfo(info);
-    seatMap.setPrices(info);
-    startSeatsPolling(applySeats, () => header.setOnline(false));
-  } catch (error) {
-    header.setOnline(false);
-    const box = document.createElement('div');
-    box.className = 'error-box';
-    box.textContent = `No se pudo conectar con el servidor: ${formatIceError(error)}`;
-    app.appendChild(box);
-  }
+  //arranque
+  // el sondeo arranca siempre: si el servidor está apagado, reintenta solo hasta que aparezca
+  startSeatsPolling(applySeats, () => setConnection(false));
 }
 
 window.addEventListener('DOMContentLoaded', initApp);
