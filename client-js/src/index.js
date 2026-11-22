@@ -3,6 +3,8 @@ import { getBookingService } from './services/iceService.js';
 import { startSeatsPolling } from './services/pollingService.js';
 import { isAvailable, isLocked, isBooked, formatIceError } from './utils/iceutils.js';
 import { createHeader } from './components/Header.js';
+import { createSeatMap } from './components/SeatMap.js';
+import { getClientId } from './utils/session.js';
 
 // cuenta las sillas por estado comparando enums por referencia
 function countSeats(seats) {
@@ -18,8 +20,16 @@ async function initApp() {
   app.className = 'app';
   document.body.appendChild(app);
 
+  const clientId = getClientId();
+
   const header = createHeader();
   app.appendChild(header.element);
+
+  const seatMap = createSeatMap({
+    onSeatClick: (seat) => console.log('Clic en silla:', seat.id),
+  });
+  app.appendChild(seatMap.element);
+
 
   try {
     const service = await getBookingService();
@@ -29,8 +39,8 @@ async function initApp() {
       (seats) => {
         header.setOnline(true);
         header.setCounts(countSeats(seats));
+        seatMap.update(seats, clientId);
       },
-
       () => header.setOnline(false)
     );
   } catch (error) {

@@ -1,7 +1,7 @@
 //lo tengo como componente: funcion que construye un trozo de la pag con el DOM y lo devuelve listo para usar 
 //DOM: Es la forma en que el codigo "habla" con lo que se ve en pantalla
 
-document.title = "Proyecto Boletas ";
+document.title = "IcesiLiveArena Boletas";
 
 import '../styles/header.css';
 
